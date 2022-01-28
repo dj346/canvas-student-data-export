@@ -50,12 +50,16 @@ class moduleItemView():
     url = ""
     external_url = ""
 
+    raw = {}
+
 
 class moduleView():
     id = 0
 
     name = ""
     items = []
+
+    raw = {}
 
     def __init__(self):
         self.items = []
@@ -68,6 +72,8 @@ class pageView():
     body = ""
     created_date = ""
     last_updated_date = ""
+    
+    raw = {}
 
 
 class topicReplyView():
@@ -77,6 +83,8 @@ class topicReplyView():
     posted_date = ""
     body = ""
 
+    raw = {}
+
 
 class topicEntryView():
     id = 0
@@ -85,6 +93,8 @@ class topicEntryView():
     posted_date = ""
     body = ""
     topic_replies = []
+
+    raw = {}
 
     def __init__(self):
         self.topic_replies = []
@@ -101,6 +111,8 @@ class discussionView():
 
     url = ""
     amount_pages = 0
+
+    raw = {}
 
     def __init__(self):
         self.topic_entries = []
@@ -120,6 +132,8 @@ class submissionView():
     preview_url = ""
     ext_url = ""
 
+    raw = {}
+
     def __init__(self):
         self.attachments = []
 
@@ -128,6 +142,8 @@ class attachmentView():
 
     filename = ""
     url = ""
+
+    raw = {}
 
 class assignmentView():
     id = 0
@@ -141,6 +157,8 @@ class assignmentView():
     html_url = ""
     ext_url = ""
     updated_url = ""
+
+    raw = {}
     
     def __init__(self):
         self.submissions = []
@@ -156,6 +174,8 @@ class courseView():
     announcements = []
     discussions = []
     modules = []
+
+    raw = {}
 
     def __init__(self):
         self.assignments = []
@@ -218,7 +238,7 @@ def findCourseModules(course, course_view):
     module_views = []
 
     try:
-        modules = course.get_modules()
+        modules = course.get_modules(include="content_details")
 
         for module in modules:
             module_view = moduleView()
@@ -229,9 +249,12 @@ def findCourseModules(course, course_view):
             # Name
             module_view.name = str(module.name) if hasattr(module, "name") else ""
 
+            # Raw data
+            module_view.raw = module
+
             try:
                 # Get module items
-                module_items = module.get_module_items()
+                module_items = module.get_module_items(include="content_details")
 
                 for module_item in module_items:
                     module_item_view = moduleItemView()
@@ -248,6 +271,9 @@ def findCourseModules(course, course_view):
                     module_item_view.url = str(module_item.html_url) if hasattr(module_item, "html_url") else ""
                     # External URL
                     module_item_view.external_url = str(module_item.external_url) if hasattr(module_item, "external_url") else ""
+
+                    #Raw data
+                    module_item_view.raw = module_item
 
                     if module_item_view.content_type == "File":
                         # If problems arise due to long pathnames, changing module.name to module.id might help
@@ -388,6 +414,10 @@ def findCoursePages(course):
             page_view.last_updated_date = dateutil.parser.parse(page.updated_at).strftime(DATE_TEMPLATE) if \
                 hasattr(page, "updated_at") else ""
 
+            # Raw Data
+            page_view.raw = page
+            
+
             page_views.append(page_view)
     except Exception as e:
         print("Skipping page download that gave the following error:")
@@ -400,7 +430,7 @@ def findCourseAssignments(course):
     assignment_views = []
 
     # Get all assignments
-    assignments = course.get_assignments()
+    assignments = course.get_assignments(include=["submission", "assignment_visibility", "all_dates", "overrides", "observed_users", "can_edit", "score_statistics"])
     
     try:
         for assignment in assignments:
@@ -435,14 +465,17 @@ def findCourseAssignments(course):
             assignment_view.updated_url = str(assignment.submissions_download_url).split("submissions?")[0] if \
                 hasattr(assignment, "submissions_download_url") else ""
 
+            # Raw Data
+            assignment_view.raw = assignment
+
             try:
                 try: # Download all submissions for entire class
-                    submissions = assignment.get_submissions()
+                    submissions = assignment.get_submissions(include=["submission_history", "submission_comments", "rubric_assessment", "assignment", "visibility", "course", "user", "group", "read_status"])
                     submissions[0] # Trigger Unauthorized if not allowed
                 except Unauthorized:
                     print("Not authorized to download entire class submissions for this assignment")
                     # Download submission for this user only
-                    submissions = [assignment.get_submission(USER_ID)]
+                    submissions = [assignment.get_submission(USER_ID, include=["submission_history", "submission_comments", "rubric_assessment", "assignment", "visibility", "course", "user", "group", "read_status"])]
                 submissions[0] #throw error if no submissions found at all but without error
             except (ResourceDoesNotExist, NameError, IndexError):
                 print('Got no submissions from either class or user: {}'.format(USER_ID))
@@ -485,6 +518,9 @@ def findCourseAssignments(course):
                         sub_view.ext_url = str(submission.url) if \
                             hasattr(submission, "url") else ""
 
+                        # Raw Data
+                        sub_view.raw = submission
+
                         try:
                             submission.attachments
                         except AttributeError:
@@ -495,6 +531,9 @@ def findCourseAssignments(course):
                                 attach_view.url = attachment["url"]
                                 attach_view.id = attachment["id"]
                                 attach_view.filename = attachment["filename"]
+
+                                attach_view.raw = attachment
+
                                 sub_view.attachments.append(attach_view)
                         assignment_view.submissions.append(sub_view)
                 except Exception as e:
@@ -513,7 +552,7 @@ def findCourseAnnouncements(course):
     announcement_views = []
 
     try:
-        announcements = course.get_discussion_topics(only_announcements=True)
+        announcements = course.get_discussion_topics(only_announcements=True, include=["all_dates", "sections", "sections_user_count", "overrides"])
 
         for announcement in announcements:
             discussion_view = getDiscussionView(announcement)
@@ -570,6 +609,9 @@ def getDiscussionView(discussion_topic):
                 # Body
                 topic_entry_view.body = str(topic_entry.message) if hasattr(topic_entry, "message") else ""
 
+                # Raw Data
+                topic_entry_view.raw = topic_entry
+
                 # Get this topic's replies
                 topic_entry_replies = topic_entry.get_replies()
 
@@ -587,6 +629,8 @@ def getDiscussionView(discussion_topic):
                         topic_reply_view.posted_date = topic_reply.created_at_date.strftime("%B %d, %Y %I:%M %p") if hasattr(topic_reply, "created_at_date") else ""
                         # Body
                         topic_reply_view.message = str(topic_reply.message) if hasattr(topic_reply, "message") else ""
+
+                        topic_reply_view.raw = topic_reply
 
                         topic_entry_view.topic_replies.append(topic_reply_view)
                 except Exception as e:
@@ -608,7 +652,7 @@ def findCourseDiscussions(course):
     discussion_views = []
 
     try:
-        discussion_topics = course.get_discussion_topics()
+        discussion_topics = course.get_discussion_topics(include=["all_dates", "sections", "sections_user_count", "overrides"])
 
         for discussion_topic in discussion_topics:
             discussion_view = None
@@ -636,6 +680,8 @@ def getCourseView(course):
 
     # Course name
     course_view.name = course.name if hasattr(course, "name") else ""
+
+    course_view.raw = course
 
     print("Working on " + course_view.term + ": " + course_view.name)
 
@@ -913,6 +959,8 @@ if __name__ == "__main__":
 
     print("\nConnecting to canvas\n")
 
+    
+
     # Initialize a new Canvas object
     canvas = Canvas(API_URL, API_KEY)
 
@@ -924,10 +972,9 @@ if __name__ == "__main__":
     all_courses_views = []
 
     print("Getting list of all courses\n")
-    courses = canvas.get_courses(include="term")
+    courses = canvas.get_courses(include=["needs_grading_count", "syllabus_body", "public_description", "total_scores", "current_grading_period_scores", "grading_periods", "term", "account", "course_progress", "sections", "storage_quota_used_mb", "total_students", "passback_status", "favorites", "teachers", "observed_users", "course_image", "concluded"])
 
     skip = set(COURSES_TO_SKIP)
-
 
     if (COOKIES_PATH):
         print("  Downloading course list page")
